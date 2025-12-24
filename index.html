@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuickMind ⚡</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#020617">
+
+  <style>
+    body{margin:0;font-family:system-ui;background:#020617;color:#e5e7eb}
+    .app{max-width:430px;margin:auto;min-height:100vh;padding:14px}
+    h1{text-align:center}
+    .card{background:#020617;border:1px solid #1e293b;border-radius:16px;padding:14px;margin-bottom:12px}
+    input,textarea,button{width:100%;padding:12px;border-radius:12px;border:none;margin-top:8px}
+    input,textarea{background:#020617;color:#e5e7eb;border:1px solid #1e293b}
+    button{background:#6366f1;color:white;font-weight:600}
+    .answer{border:1px solid #1e293b;border-radius:14px;padding:10px;margin-bottom:10px}
+    .hide{display:none}
+    .small{font-size:12px;opacity:.7}
+  </style>
+</head>
+<body>
+<div class="app">
+  <h1>⚡ QuickMind</h1>
+  <p class="small" style="text-align:center">Think once. Help everyone.</p>
+
+  <!-- AUTH -->
+  <div class="card" id="loginCard">
+    <input id="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button onclick="login()">Login / Register</button>
+  </div>
+
+  <!-- ASK QUESTION -->
+  <div class="card hide" id="askCard">
+    <input id="newQ" placeholder="Ask a question">
+    <button onclick="askQuestion()">Ask</button>
+    <div class="small">If no one answers in 4 minutes, AI will answer.</div>
+  </div>
+
+  <!-- ANSWER -->
+  <div class="card hide" id="answerCard">
+    <textarea id="newA" placeholder="Write at least 100 words"></textarea>
+    <button onclick="submitAnswer()">Submit Answer (+2 points)</button>
+  </div>
+
+  <!-- ANSWERS -->
+  <div id="answers"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+const firebaseConfig={
+ apiKey:"YOUR_KEY",authDomain:"YOUR_PROJECT.firebaseapp.com",
+ databaseURL:"https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+ projectId:"YOUR_PROJECT",appId:"YOUR_APP_ID"};
+
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth();
+const db=firebase.database();
+let currentQ=null;
+
+function login(){
+ auth.signInWithEmailAndPassword(email.value,password.value)
+ .catch(()=>auth.createUserWithEmailAndPassword(email.value,password.value));
+}
+
+auth.onAuthStateChanged(u=>{
+ loginCard.classList.toggle('hide',!!u);
+ askCard.classList.toggle('hide',!u);
+});
+
+function askQuestion(){
+ const q=newQ.value;
+ if(!q)return;
+ const ref=db.ref('questions').push({q,ts:Date.now(),ai:false});
+ currentQ=ref.key;
+ answerCard.classList.remove('hide');
+
+ setTimeout(()=>autoAI(ref.key,q),240000); // 4 min
+}
+
+function submitAnswer(){
+ const text=newA.value;
+ if(text.split(' ').length<100){alert('100 words required');return;}
+ db.ref('answers').push({q:currentQ,a:text,by:auth.currentUser.uid,likes:0});
+ db.ref('points/'+auth.currentUser.uid).transaction(p=>(p||0)+2);
+ newA.value='';
+}
+
+function autoAI(id,q){
+ db.ref('answers').orderByChild('q').equalTo(id).once('value',s=>{
+  if(!s.exists()){
+   db.ref('answers').push({q:id,a:'[AI answer placeholder]',ai:true,likes:0});
+  }
+ });
+}
+
+// RENDER MOST USED ON TOP
+const ansBox=document.getElementById('answers');
+db.ref('answers').on('value',snap=>{
+ let arr=[];snap.forEach(c=>arr.push(c.val()));
+ arr.sort((a,b)=>b.likes-a.likes);
+ ansBox.innerHTML='';
+ arr.forEach(x=>{
+  ansBox.innerHTML+=`<div class='answer'><b>Answer</b><p>${x.a.slice(0,300)}...</p></div>`;
+ });
+});
+
+// PWA SERVICE WORKER
+if('serviceWorker'in navigator){navigator.serviceWorker.register('sw.js');}
+</script>
+</body>
+</html>
